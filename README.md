@@ -11,6 +11,23 @@ What you get from a ~50-topic book:
 - a final exam (20–30 questions), a book summary and an end-to-end project (if the book is hands-on);
 - a single `textbook.html`: tabs for Full text / Notes / Tests, progress saved in the browser, a topic counts as passed at ≥80%.
 
+## Demo
+
+Built with this workflow from two chapters of *System Design Interview – An Insider's Guide, Vol. 2* (Alex Xu): 15 topics, 2 section tests, a final exam and a project. Language: English. The book itself is not included in the repository, and the frames below show none of its figures — only what the tool generates.
+
+| | |
+|---|---|
+| ![Overview: progress and the section tree](docs/screenshots/01-overview.png) | ![Notes with a comparison table and [ch. N, p. X] references](docs/screenshots/02-notes.png) |
+| Overview: sections, topics, progress | Notes: tables, `[ch. N, p. X]` references back to the book |
+| ![Topic quiz with an explanation of the wrong answer](docs/screenshots/04-quiz.png) | ![The same quiz in dark mode](docs/screenshots/05-quiz-dark.png) |
+| Quiz: every option is explained, with a pointer to the book | Dark theme (follows the system setting) |
+| ![Section test](docs/screenshots/07-section-test.png) | ![Mobile layout](docs/screenshots/06-mobile.png) |
+| Section test: questions across topics | Phone layout |
+| ![Book summary](docs/screenshots/08-summary.png) | ![Final exam](docs/screenshots/09-exam.png) |
+| Book summary | Final exam (21 questions) |
+| ![Final project](docs/screenshots/10-project.png) | |
+| Final project | |
+
 ## Requirements
 - Claude Code with the **Workflow** tool (workflows that run subagents). Without it the pipeline cannot start.
 - `python3` (epub extraction and the build use only the standard library; PDFs also need `pip3 install pypdf`).
@@ -46,12 +63,13 @@ What happens:
 5. It builds `courses/<slug>/textbook.html` and opens it.
 
 ## Cost
-A lot. Four agents work on every topic (author, critic, quiz writer, quiz critic), plus rework passes. In our runs that came to roughly **0.5–2 million subagent tokens per topic** including retries, so a 50-topic book costs **tens of millions of tokens**. This is an estimate, not a guarantee — the pilot prints the real figure. If your plan has a tight limit, start with a short book or stop after the pilot.
+A lot. Four agents work on every topic (author, critic, quiz writer, quiz critic), plus rework passes. In our runs that came to roughly **0.5–2 million subagent tokens per topic** including retries, so a 50-topic book costs **tens of millions of tokens**. This is an estimate, not a guarantee — the pilot prints the real figure. For reference, the 15-topic demo above (map, 15 topics, 2 section tests, final stage) used about 6.9 million subagent tokens. If your plan has a tight limit, start with a short book or stop after the pilot.
 
 ## Good to know
 - **Failures are normal.** Dropped connections kill some agents in every run; the skill resumes the workflow until the whole batch has converged (3–6 resumes per batch is typical). Don't let the computer sleep: agents fail in bulk and a single run can hang for hours. On macOS: `caffeinate -dimsu -t 28800`.
 - **Quality.** The critics check every note and quiz against the original and caught many real errors in our runs (mixed-up numbers, invented details, retelling of neighbouring topics). But if a critic itself fails, its check is silently counted as passed, so for important courses skim at least the pilot topics yourself.
-- **Language.** The textbook text is written in the language you ask for. The page interface (tab and button labels) and the workflows' internal agent prompts are in Russian.
+- **Language.** The textbook text is written in the language you ask for. The page interface follows `courses/<slug>/course.json` (`{"lang":"en"}` or `{"lang":"ru"}`; any other language falls back to English). The skill writes this file for you. The workflows' internal agent prompts and the critics' reports are still in Russian; the generated notes and quizzes come out in the target language, but expect Russian in the critics' rejection notes. In the English demo, an early batch ran before the language-aware prompts were in effect and wrote a few Russian labels (`[гл. N]` markers, "прим. редактора"); the build normalises the markers and we replaced the labels by hand, so check a new course with `grep -P '[А-Яа-яЁё]'`.
+- **Edit the workflow scripts between sessions, not during one.** The Workflow tool snapshots named workflows when the session starts, so edits made mid-session are ignored by `name:` launches. Launch by `scriptPath` (the skill does) or restart the session after changing a script.
 - **Fonts.** The page loads Google Fonts when online and falls back to system fonts offline.
 - **Course layout** (`courses/<slug>/`): `chapters/`, `images/`, `toc.json`, `map.json`, `topics/` (`.material.md`, `.quiz.json`), `sections/`, `final/`, `textbook.html`. To share a finished book, send the whole folder (or `textbook.html` together with `images/`).
 

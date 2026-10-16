@@ -27,7 +27,12 @@ Warn about the cost up front: this uses **a lot of tokens** (every topic gets an
 python3 .claude/workflows/scripts/extract_epub.py "<book.epub>" courses/<slug>
 python3 -I .claude/workflows/scripts/extract_pdf.py "<book.pdf>" courses/<slug>
 ```
-(one of the two). You get `chapters/chNN.md`, `toc.json` and `images/`. Read the script's output: the number of chapters and words. Pieces like "Part 1", "Foreword", "Reference materials" of 50–300 words are normal — the structurer will sort them out. If the whole book came out as one file, or nothing came out, stop and tell the user (a PDF without bookmarks cannot be cut this way).
+(one of the two). You get `chapters/chNN.md`, `toc.json` and `images/`. Then record the textbook language, which the build uses to pick the page interface (en or ru; any other language falls back to en):
+
+```bash
+echo '{"lang":"<lang>"}' > courses/<slug>/course.json
+```
+ Read the script's output: the number of chapters and words. Pieces like "Part 1", "Foreword", "Reference materials" of 50–300 words are normal — the structurer will sort them out. If the whole book came out as one file, or nothing came out, stop and tell the user (a PDF without bookmarks cannot be cut this way).
 
 If the book's language differs from the textbook language, no translation is needed: the authors write the notes in the target language directly from the original. Use `book-translate` only when the user explicitly asks for a full translation of the chapters.
 
@@ -60,6 +65,8 @@ After the pilot show the user: `courses/<slug>/textbook.html` (built automatical
 
 One section at a time, at most 5 topics per batch (a 12-topic section = 3 batches), with the same `book-topics` call. For every batch `sectionTopics` is the whole section.
 
+Always pass `lang` in the args of every workflow call: the prompts use it to pick the reference markers (`[ch. N, p. X]` for English, `[гл. N, стр. X]` for Russian) and figure captions.
+
 **Recovering from failures is the most important part.** Dropped connections and computer sleep kill some agents in every run. The workflow result gives `material.verdict` and `quiz.questions` per topic. A batch is done only when, **for all topics at the same time**, `material.verdict ≠ failed` and `quiz.questions > 0`. Otherwise:
 
 ```
@@ -68,6 +75,7 @@ Workflow({scriptPath:'<scriptPath from the launch response>', resumeFromRunId:'<
 - Pass `args` again every time — a resume without them fails (`Cannot destructure property 'courseDir'`).
 - The resume cache works on a prefix of the agent calls, so topics that were already done sometimes "roll back" to failed — that is normal, just keep resuming until everything converges in a single result. Don't cap the number of attempts (3–6 resumes per batch is typical).
 - If a critic failed, its call is silently counted as "approve". That doesn't block anything, but spot-check with `grep -c '"q"' topics/<id>.quiz.json` — a quiz should have 5–10 questions (11–16 occasionally slip through).
+- Launch workflows by the `scriptPath` returned on the first launch, never by `name` after you edited a script: the tool snapshots named workflows when the session starts, so edits made mid-session are not picked up. Don't edit a script while a run uses it.
 - While a workflow runs, don't poll in a loop; a completion notification will arrive.
 
 After each converged batch tell the user the progress in one line (N of total topics).

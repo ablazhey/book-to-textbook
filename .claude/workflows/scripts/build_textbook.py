@@ -15,7 +15,11 @@ import os
 import re
 import sys
 
-UI = {
+UI_RU = {
+    "textbook": "Учебник",
+    "minShort": "~%s мин",
+    "chShort": "гл.",
+    "pgShort": "стр.",
     "check": "Проверить",
     "correct": "Верно",
     "wrong": "Неверно",
@@ -106,6 +110,123 @@ UI = {
 }
 
 
+UI_EN = {
+    "textbook": "Textbook",
+    "minShort": "~%s min",
+    "chShort": "ch.",
+    "pgShort": "p.",
+    "check": "Check",
+    "correct": "Correct",
+    "wrong": "Incorrect",
+    "source": "Source in the book",
+    "quiz": "Topic quiz",
+    "sectionTest": "Section test",
+    "exam": "Final exam",
+    "practice": "Practice task",
+    "project": "Final project",
+    "summary": "Book summary",
+    "chapterText": "Chapter text",
+    "expected": "Expected result",
+    "checklist": "Self-check",
+    "steps": "Instructions",
+    "inProgress": "in progress",
+    "passed": "passed",
+    "result": "Result",
+    "retry": "Retake",
+    "yourAnswer": "Your answer",
+    "progress": "Progress",
+    "passRule": "A topic counts as passed at 80% correct answers",
+    "section": "Section",
+    "final": "Final",
+    "time": "Time",
+    "showAnswer": "Reference answer",
+    "answered": "answered",
+    "mistakes": "Review mistakes",
+    "mistakesHint": "Wrong questions come back to be answered, correct ones collapse",
+    "toc": "Contents",
+    "search": "Search topics",
+    "searchEmpty": "Nothing found",
+    "theme": "Theme",
+    "notes": "Your notes and answers",
+    "notesPlaceholder": "Write right here — the text is saved in your browser",
+    "copy": "Copy worksheet",
+    "copied": "Copied",
+    "cards": "Term cards",
+    "cardsHint": "Terms of the book, original and translation",
+    "flip": "Show translation",
+    "know": "Know it",
+    "dontKnow": "Repeat",
+    "cardsDone": "All cards done",
+    "cardsReset": "Start over",
+    "openChapter": "Open chapter text",
+    "keyHints": "Keys: 1–9 — choose an answer, Enter — check, / — search",
+    "done": "Done",
+    "progressPage": "Quiz progress",
+    "pPassed": "passed",
+    "pTaken": "taken",
+    "pAvg": "average score",
+    "pTest": "Test",
+    "pWhere": "Section",
+    "pScore": "Score",
+    "pStatus": "Status",
+    "pNotTaken": "not taken",
+    "pFailed": "not passed",
+    "pEmpty": "No tests taken yet — results will appear here automatically.",
+    "tabDigest": "Notes",
+    "tabQuiz": "Quiz",
+    "tabPractice": "Practice",
+    "prevTopic": "Previous topic",
+    "nextTopic": "Next topic",
+    "chapterNav": "Topic navigation",
+    "openSource": "Source",
+    "closeSource": "Close",
+    "ctaRead": "Read the notes",
+    "ctaTestPrefix": "Take the quiz",
+    "ctaQuestions": "questions",
+    "readSettings": "Reading settings",
+    "fontSize": "Font size",
+    "textWidth": "Text width",
+    "lineSpacing": "Line spacing",
+    "widthNarrow": "Narrow",
+    "widthNormal": "Normal",
+    "widthWide": "Wide",
+    "spacingTight": "Tight",
+    "spacingNormal": "Normal",
+    "spacingLoose": "Loose",
+    "sessionList": "List",
+    "sessionView": "One by one",
+    "sessionQuestion": "Question",
+    "sessionOf": "of",
+    "sessionPrev": "‹ Back",
+    "sessionNext": "Next ›",
+    "sessionFinish": "Show result",
+    "examAnswered": "Answer recorded",
+    "correctAnswer": "Correct answer",
+}
+
+
+def _ui_language():
+    """Язык интерфейса — из <course_dir>/course.json {"lang": "..."}: ru — русский,
+    любой другой — английский (других словарей нет). Без файла — ru, как раньше.
+    Читаем при импорте: часть CSS/шаблонов собирается из UI на уровне модуля."""
+    try:
+        with open(os.path.join(sys.argv[1], "course.json"), encoding="utf-8") as f:
+            lang = str(json.load(f).get("lang", "ru")).strip().lower()
+    except (IndexError, OSError, ValueError, AttributeError):
+        return "ru"
+    return "ru" if lang in ("", "ru") or lang.startswith("ru-") else "en"
+
+
+UI = UI_RU if _ui_language() == "ru" else UI_EN
+
+
+def norm_ref(text):
+    """Подпись ссылки на источник приводим к языку интерфейса: «[гл. 5, стр. 79]» <-> «[ch. 5, p. 79]».
+    Агенты пишут маркер как в промпте (или как привыкли), сборщик показывает его единообразно."""
+    t = re.sub(r"(?<![A-Za-zА-Яа-яЁё])(?:гл|ch|chap|chapter)\.?(?=\s*\d)", UI["chShort"], text or "", flags=re.I)
+    return re.sub(r"(?<![A-Za-zА-Яа-яЁё])(?:стр|pp?|pages?)\.?(?=\s*\d)", UI["pgShort"], t, flags=re.I)
+
+
 def _is_table_sep(s):
     return bool(re.match(r"^\|[\s:|-]+\|$", s.strip())) and "-" in s
 
@@ -126,15 +247,16 @@ def md_to_html(md, clickable_refs=True, captions=True):
             out.append("</blockquote>")
             in_quote = False
 
-    ref_tag = ('<button type="button" class="ref" data-opench>[\\1]</button>'
-               if clickable_refs else '<span class="ref">[\\1]</span>')
+    ref_open, ref_close = (('<button type="button" class="ref" data-opench>', '</button>')
+                           if clickable_refs else ('<span class="ref">', '</span>'))
 
     def inline(text):
         e = html.escape(text)
         e = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", e)
         e = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", e)
         e = re.sub(r"`([^`]+)`", r"<code>\1</code>", e)
-        return re.sub(r"\[(гл\.[^\]]+)\]", ref_tag, e)
+        return re.sub(r"\[((?:гл|ch|chap|chapter)\.?\s*\d[^\]]*)\]",
+                      lambda m: ref_open + "[" + norm_ref(m.group(1)) + "]" + ref_close, e, flags=re.I)
 
     def cells(row):
         return [c.strip() for c in row.strip().strip("|").split("|")]
@@ -233,21 +355,21 @@ def read_text(path):
 
 
 def chapter_range_label(nums):
-    """[3,4,5] -> 'гл. 3–5'; [7] -> 'гл. 7'; несмежные номера — 'гл. 3, 7'."""
+    """[3,4,5] -> 'гл. 3–5' (en: 'ch. 3–5'); [7] -> 'гл. 7'; несмежные — 'гл. 3, 7'."""
     nums = sorted(set(nums))
     if not nums:
         return None
     if len(nums) > 1 and nums[-1] - nums[0] + 1 == len(nums):
-        return "гл. %d–%d" % (nums[0], nums[-1])
-    return "гл. " + ", ".join(str(n) for n in nums)
+        return "%s %d–%d" % (UI["chShort"], nums[0], nums[-1])
+    return UI["chShort"] + " " + ", ".join(str(n) for n in nums)
 
 
 def collect(course):
     cmap = read_json(os.path.join(course, "map.json")) or {"sections": []}
     toc = read_json(os.path.join(course, "toc.json")) or {}
-    book_title = toc.get("title", "Учебник")
+    book_title = toc.get("title", UI["textbook"])
     # имя страницы — короткое и опознаваемое, без подзаголовка книги после двоеточия
-    data = {"title": book_title, "pageTitle": "Учебник " + book_title.split(":")[0].strip(),
+    data = {"title": book_title, "pageTitle": UI["textbook"] + " " + book_title.split(":")[0].strip(),
             "author": toc.get("author", ""), "sections": []}
     for sec in cmap.get("sections", []):
         s = {"id": sec["id"], "title": sec["title"], "topics": []}
@@ -1736,6 +1858,14 @@ def wrong_list(q, size):
     w = q.get("wrongExplanations") or []
     if isinstance(w, dict):
         return [str(w.get(str(i), w.get(i, ""))) for i in range(size)]
+    # Агенты пишут либо список по всем вариантам (пустая строка на месте верного), либо
+    # по одному объяснению на каждый НЕВЕРНЫЙ вариант без «дырок». Второй формат при
+    # позиционной раскладке съезжает: объяснение уходит к соседнему варианту (в разных
+    # курсах так выглядит ~19% вопросов). Узнаём его по длине и раскладываем по неверным.
+    correct = {i for i in (q.get("correct") or []) if isinstance(i, int)}
+    if correct and len(w) != size and len(w) == size - len(correct):
+        it = iter(w)
+        return ["" if i in correct else str(next(it)) for i in range(size)]
     return [str(w[i]) if i < len(w) else "" for i in range(size)]
 
 
@@ -1766,7 +1896,7 @@ def render_quiz(qid, questions, title, shuffle_questions=False, is_exam=False):
                      % (qtype, json.dumps(q.get("correct", [])),
                         html.escape(json.dumps(wrong_list(q, len(options)), ensure_ascii=False), quote=True),
                         html.escape(q.get("explanation", ""), quote=True),
-                        html.escape(q.get("ref", ""), quote=True),
+                        html.escape(norm_ref(q.get("ref", "")), quote=True),
                         html.escape(q.get("shortAnswer", ""), quote=True),
                         section_attr))
         parts.append('<div class="qt"><span class="qn">%02d</span><span>%s</span></div>'
@@ -1971,7 +2101,7 @@ def build(course):
                 continue
             meta_bits = []
             if t.get("minutes"):
-                meta_bits.append("~%s мин" % t["minutes"])
+                meta_bits.append(UI["minShort"] % t["minutes"])
             if t["questions"]:
                 meta_bits.append("%d %s" % (len(t["questions"]), UI["ctaQuestions"]))
             if t.get("chapterRange"):
